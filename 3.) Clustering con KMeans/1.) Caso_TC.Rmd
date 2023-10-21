@@ -1,0 +1,126 @@
+---
+title: "Segmentación de Tarjetas de Crédito"
+author: "Ing. Erick Chacón, MAIT | MAF Candidate"
+date: "2023-08-14"
+output: pdf_document
+---
+
+## IMPORTAR DATASET
+
+```{r}
+TC <- read.table("/Users/erickfernandochaconflores/Downloads/tarjetacredito (1).csv", 
+                 header = TRUE, sep=";", row.names = "ID")
+```
+
+## TIPOS DE DATOS
+
+```{r}
+str(TC)
+```
+
+Todas las variables son númericas asi que no hay necesidad de convertir nada.
+
+## ESTIMAR EL NÚMERO DE CLUSTERS
+
+### Normalizar Variables
+
+Primero hay que normalizar las variables. Donde:
+
+Z score = (Observación - Media de la variable) / Desviación estandar de la variable
+
+La idea es que la media de la variable sea igual a 0 y la desviación estandar la variable igual 1.
+
+```{r}
+TC.norm = scale(TC)
+```
+
+### Matriz de distancia
+
+No vale la pena hacer la matriz de distancia porque hay muchas variables aunque R puede correrla sin problema la interpretación sería pobre.
+
+### Determinar si hay Na´s
+
+```{r}
+sum(is.na(x = TC.norm))
+TC.norm <- na.omit(TC.norm)
+```
+
+### Estimar el número de clusters
+
+```{r}
+library(factoextra)
+
+fviz_nbclust(TC.norm, kmeans, method ="wss")
+```
+
+El 8 es el hombro y el 7 es el codo.
+
+```{r}
+fviz_nbclust(TC.norm, kmeans, method ="silhouette") 
+```
+
+Este método sugiere siete clusters.
+
+```{r}
+fviz_nbclust(TC.norm, kmeans, method ="gap_stat")
+```
+
+Según el método de "gap_stats" nos dice que el optimo es 7 clusters.
+
+## GRÁFICAR LOS CLUSTERS
+
+Primero hay que estimar los clusters. Esto quiere decir que a cada observación se le asignará un cluster.
+
+```{r}
+Siete.clusters = kmeans(TC.norm, centers = 7, nstart = 100)
+```
+
+Ahora hay que gráficar los clusters.
+
+```{r}
+fviz_cluster(Siete.clusters, data=TC.norm)
+```
+
+## ESTIMAR LAS MEDIAS DE LOS CLUSTERS O CENTROIDES
+
+```{r}
+library(dplyr)
+
+medias.atributos = TC %>%
+  mutate(Cluster = Siete.clusters$cluster) %>%
+  group_by(Cluster) %>%
+  summarise_all("mean")
+```
+
+Visualizemos las medias de los atributos de los clusters. Para poder graficar los atributos de los clusters voy a convertir la base "TC.norm" en un formato de tres columnas utilizando la funcion gather del paquete "tidyr".
+
+```{r}
+library(tidyr)
+TC.norm = as.data.frame(TC.norm) #Porque TC.norm se convirtio en una matriz larga.
+TC.norm$Cluster = as.factor(Siete.clusters$cluster) #Crear una varible cluster dentro del data set y es variable va a tener los datos que estan en Siete.clusters, especificamente "cluster"
+Tres.columnas = gather(TC.norm, Atributo, Valor, balance:tenencia, factor_key = TRUE) #Usar función gather para convertir la base de datos de 18 columnas a 3 columnas. "balance:tenencia" queire decir que ponga todo desde balance hasta tenencia en Atributo.
+```
+
+## GRÁFICAR LOS CLUSTERS
+
+```{r}
+library(ggplot2)
+ggplot(Tres.columnas, aes(as.factor(x=Atributo),
+                           y= Valor,
+                           group = Cluster, colour= Cluster))+
+        stat_summary(fun = mean, geom = "pointrange", size =0.5)+
+         stat_summary(geom = "line")+
+  theme(axis.text.x=element_text(angle = -90, hjust = 0))
+```
+
+## REVISAR CON LAS MEDIAS DE LOS ATRIBUTOS
+
+Revisar con la tabla de las medias de los clusters para ver la similitud entre segmentos.
+
+```{r}
+medias.atributos
+```
+
+## PERFIL DE CLIENTES
+
+![](images/Captura%20de%20pantalla%202023-08-14%20a%20la(s)%2017.57.40.png)

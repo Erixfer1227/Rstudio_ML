@@ -1,0 +1,162 @@
+---
+title: "Kmeans Membresía"
+author: "Ing. Erick Chacón, MAIT | MAF Candidate"
+date: "2023-08-11"
+output: pdf_document
+---
+
+## IMPORTAR DATASET
+
+Hay que realizar una segmentación a partir de esta muestra para ayudar al equipo de Marketing a planificar su estrategia.
+
+```{r}
+datos.clubmembresia <- read.table("/Users/erickfernandochaconflores/Downloads/Mall_Customers.csv",
+                                  header=TRUE, sep=",",row.names = "CustomerID")  
+```
+
+## PASAR TODAS LAS VARIABLES A NÚMERICAS
+
+La clusterización solo se puede trabajar con variables númericas. Asi que se convierte la variable tipo "chr" a "factor" y luego se convierte a númerica "int". Función "as.factor" para convertir a factor y función "unclass" para convertir a variable de tipo númerica. Aun con la función "unclass" sigue conservando su naturaleza categorica, asi que para no tener problemas y eliminarla, se deberá aplicar la función "as.numeric".
+
+```{r}
+str(datos.clubmembresia)
+datos.clubmembresia$Gender = as.factor(datos.clubmembresia$Gender)
+str(datos.clubmembresia)
+datos.clubmembresia$Gender = unclass(datos.clubmembresia$Gender)
+str(datos.clubmembresia) 
+datos.clubmembresia$Gender = as.numeric(datos.clubmembresia$Gender)
+str(datos.clubmembresia) 
+```
+
+## CREAR FUNCIÓN DE NORMALIZACIÓN Y NORMALIZAR
+
+Primero se crea la función en R. Para crear la función considerar la sigueinte formula para normalizar:
+
+![](images/Post%201%20no%201.jpg)
+
+Esta formula no es la ideal para normalizar. Es mejor usar la normalización con Z Score.
+
+Luego de crear la función, aplicar la función al dataset. La función "lapply" ayuda a aplicar la función creada al dataset.
+
+```{r}
+head(datos.clubmembresia)
+
+min_max_norm <- function(x){
+  (x-min(x))/(max(x)- min(x))
+}
+datos.norm <- as.data.frame(lapply(datos.clubmembresia, min_max_norm))
+
+head(datos.norm)
+```
+
+Tabien se puede normalizar directamente con una función de R, llamada "scale". La función "scale" utiliza la estandarización Z-score. Es decir, todas las variables tienen media 0 y desviación estandar de 1. La formula para normalizar con Z, es la siguiente:
+
+![](images/Z-score-formula.webp){width="231"}
+
+```{r}
+?scale
+datos.norm.direct.function <- scale(datos.clubmembresia)
+datos.norm.direct.function <- as.data.frame(datos.norm.direct.function)
+```
+
+## CREAR UN MATRIZ DE DISTANCIA
+
+Se deberan instalar y cargar las librerias para crear la matriz de distancia.
+
+Ahora hay que medir las distancias entre las observaciones. Como medida de similud se usará la distancia euclediana.
+
+```{r}
+library(factoextra)
+library(ggplot2)
+library(NbClust)
+
+matriz.distancia = get_dist(datos.norm, method = "euclidian")
+fviz_dist(matriz.distancia, gradient = list(low="white", high="blue"))
+```
+
+## ESTIMAR EL NÚMERO DE CLUSTERS
+
+Se requiere libreria "factoextra" para usar la función "fviz_nbclust". Within-Cluster Sum of Squares (WSS) hace referencia al método del codo. Al final esto es una referencia, el sentido de negocio tiene que predominar.
+
+```{r}
+fviz_nbclust(datos.norm, kmeans, method = "wss")
+```
+
+El método sugiere 2 o 4 cluster, es dificil determinarlo.
+
+Ahora se usará la función "NbClust" que va a utilizar varios métodos y según el concenso de los métodos dará una sugerencia del número de clusters optimos.
+
+```{r}
+numero.clusters <- NbClust(datos.norm, distance = "euclidean", min.nc = 2, max.nc = 6, method = "kmeans", index= "alllong")
+```
+
+## ESTIMAR Y GRÁFICAR CLUSTERS
+
+Estimar 2, 4 y 6 clusters con la función "kmeans". Esta función me mostrará tambien la media de los clusters solicitados en el dataset.
+
+```{r}
+dos.clusters = kmeans(datos.norm, centers = 2, nstart = 100)
+dos.clusters # Dice de los n datos del dataset, a que cluster pertenece cada observación.
+cuatro.clusters = kmeans(datos.norm, centers = 4, nstart = 100)
+cuatro.clusters
+seis.clusters = kmeans (datos.norm, centers = 6, nstart = 100)
+seis.clusters
+```
+
+Las medias se parecen mucho en el cluster 2, ya que lo que hizo fue seperar entre hombres y mujeres por eso el resto de las medias de las variables son iguales.
+
+Ahora gráficar. Se usará la función "fviz_cluster" del paquete "factoextra".
+
+```{r}
+fviz_cluster(dos.clusters, data = datos.norm)
+fviz_cluster(cuatro.clusters, data = datos.norm)
+fviz_cluster(seis.clusters, data = datos.norm)
+fviz_cluster(seis.clusters, data = datos.norm, star.plot = TRUE)
+```
+
+## ESTIMAR MEDIAS DE LOS ATRIBUTOS
+
+Ahora se estimaran las medias de los clusters usando las variables originales con "the pipe" de paquete "dplyr".
+
+```{r}
+library(dplyr)
+
+datos.clubmembresia %>%
+  mutate(Cluster = seis.clusters$cluster) %>%
+  group_by(Cluster)%>%
+  summarise_all("mean")
+```
+
+## VISUALIZAR LAS MEDIAS DE LOS ATRIBUTOS DE LOS CLUSTERS
+
+```{r}
+datos.norm$cluster = as.factor(seis.clusters$cluster)
+
+library(tidyr)
+head(datos.clubmembresia$Spending.Score..1.100.)
+
+tres.columnas = gather(datos.norm, Atributo, valor, Gender:Spending.Score..1.100., factor_key = TRUE)
+
+library(ggplot2)
+ggplot(tres.columnas, aes(as.factor(x=Atributo), y=valor, group = cluster, colour = cluster))+ stat_summary(fun=mean, geom = "pointrange", size = 1)+ stat_summary(geom = "line")
+```
+
+Si bien no hay una variable independiente, si hay una variable que nos interesa analizar como lo es Spending.Score..1.100.
+
+## CONSTRUYENDO PERFILES DE CLIENTES
+
+Esta es la parte más importante del ejercicio. Esta es la parte más creativa. Aunque si hay que presentar números eston son muy frios, entonces hay que construir una solución de segmentación más atractiva.
+
+### Medias de los atributos de cada cluster
+
+![](images/Captura%20de%20pantalla%202023-08-11%20a%20la(s)%2017.23.19.png)
+
+### Gráfico de las medias de los atributos de cada cluster
+
+![](images/Captura%20de%20pantalla%202023-08-11%20a%20la(s)%2017.22.20.png)
+
+### Perfil de los clientes
+
+![](images/Captura%20de%20pantalla%202023-08-11%20a%20la(s)%2017.21.57.png)
+
+Como hay tan pocos atributos por cliente los perfiles construidos en este ejercicio pueden ser un poco cliches.
